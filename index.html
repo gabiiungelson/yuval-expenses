@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>הוצאות יובל</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14px;padding-bottom:90px}
+
+/* Header */
+.header{background:#1a1a18;color:#fff;padding:12px 16px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.hrow1{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.logo{font-size:22px}
+.htitle{font-size:16px;font-weight:700}
+.hsub{font-size:11px;color:rgba(255,255,255,.5);display:flex;align-items:center;gap:5px}
+.dot{width:7px;height:7px;border-radius:50%;background:#51cf66;display:inline-block;flex-shrink:0}
+.dot.off{background:#ff6b6b}
+.bcards{display:flex;gap:8px}
+.bc{flex:1;background:rgba(255,255,255,.1);border-radius:8px;padding:8px 10px;text-align:center}
+.bcv{font-size:17px;font-weight:700;font-family:monospace;line-height:1}
+.bcl{font-size:10px;color:rgba(255,255,255,.5);margin-top:2px}
+.bc.u .bcv{color:#ff6b6b}
+.bc.p .bcv{color:#51cf66}
+
+/* Main */
+.main{max-width:600px;margin:0 auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+
+/* Filters */
+.filters{background:#fff;border:1px solid #ddd;border-radius:10px;padding:10px 12px;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.fsel,.fdate{border:1px solid #ddd;border-radius:6px;padding:7px 9px;font-size:12px;background:#f5f4f0;color:#1a1a18;font-family:Arial;flex:1;min-width:90px}
+.fdate{min-width:115px}
+.fclear{background:none;border:1px solid #ddd;border-radius:6px;padding:7px 10px;font-size:12px;cursor:pointer;color:#666;white-space:nowrap;font-family:Arial}
+
+/* Summary */
+.summary{background:#fff;border:1px solid #ddd;border-radius:10px;padding:12px}
+.slbl{font-size:11px;font-weight:600;color:#aaa;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px}
+.prow{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:13px}
+.prow:last-child{border-bottom:none}
+.pname{font-weight:600}
+.ppaid{font-size:11px;color:#888}
+.pbal{font-family:monospace;font-size:14px;font-weight:700}
+
+/* Bulk bar */
+.bulkbar{display:none;background:#1a4fa0;color:#fff;border-radius:10px;padding:10px 14px;align-items:center;gap:10px;flex-wrap:wrap}
+.bulkbar.on{display:flex}
+.bulkinfo{flex:1;font-size:13px}
+.btn-bp{background:#51cf66;color:#fff;border:none;border-radius:6px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:600;font-family:Arial}
+
+/* Section row */
+.secrow{display:flex;justify-content:space-between;align-items:center}
+.seclbl{font-size:11px;font-weight:600;color:#aaa;text-transform:uppercase;letter-spacing:.08em}
+.cbadge{background:#e0e0e0;color:#666;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:600}
+
+/* Expense list */
+.elist{display:flex;flex-direction:column;gap:8px}
+.ecard{background:#fff;border:1px solid #ddd;border-radius:10px;padding:12px;border-right:3px solid #ddd;transition:border-color .15s}
+.ecard.unpaid{border-right-color:#e67700;background:#fffcf8}
+.ecard.paid{border-right-color:#1a6b3a}
+.ecard.sel{background:#e8eef8;border-color:#1a4fa0}
+.ctop{display:flex;align-items:flex-start;gap:10px}
+.cchk{width:18px;height:18px;margin-top:3px;flex-shrink:0;cursor:pointer;accent-color:#1a4fa0}
+.cmain{flex:1;min-width:0}
+.creason{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+.cmeta{font-size:11px;color:#888;display:flex;gap:8px;flex-wrap:wrap}
+.camount{font-size:18px;font-weight:700;font-family:monospace;white-space:nowrap}
+.camount.unpaid{color:#e67700}
+.camount.paid{color:#1a6b3a}
+.ctags{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.tag{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500}
+.tp{background:#e4f2ea;color:#1a6b3a}
+.tu{background:#fff3e0;color:#e67700}
+.tr{background:#e8eef8;color:#1a4fa0}
+.tnr{background:#f0f0f0;color:#888}
+.cbtns{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+.btn-pay{background:#e4f2ea;color:#1a6b3a;border:1px solid #1a6b3a;border-radius:6px;padding:7px 13px;font-size:12px;cursor:pointer;font-weight:600;font-family:Arial}
+.btn-pay:active{background:#1a6b3a;color:#fff}
+.btn-unpay{background:#f0f0f0;color:#666;border:1px solid #ddd;border-radius:6px;padding:7px 13px;font-size:12px;cursor:pointer;font-family:Arial}
+.btn-del{background:#f5e4e4;color:#8b1a1a;border:1px solid #8b1a1a;border-radius:6px;padding:7px 10px;font-size:12px;cursor:pointer;font-family:Arial}
+.btn-del:active{background:#8b1a1a;color:#fff}
+
+/* Empty / Loading */
+.empty{text-align:center;padding:40px 20px;color:#aaa}
+.empty .ico{font-size:40px;margin-bottom:10px}
+
+/* FAB */
+.fab{position:fixed;bottom:20px;left:20px;width:56px;height:56px;background:#1a4fa0;color:#fff;border:none;border-radius:50%;font-size:28px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;z-index:200;line-height:1}
+.fab:active{background:#133a78}
+
+/* Modal bottom sheet */
+.moverlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;align-items:flex-end;justify-content:center}
+.moverlay.on{display:flex}
+.modal{background:#fff;border-radius:16px 16px 0 0;padding:20px 16px 36px;width:100%;max-width:600px;max-height:92vh;overflow-y:auto}
+.mtitle{font-size:16px;font-weight:700;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center}
+.mclose{background:none;border:none;font-size:24px;cursor:pointer;color:#888;line-height:1;padding:0 4px}
+.fg{margin-bottom:13px}
+.flbl{font-size:12px;color:#666;margin-bottom:4px;display:block;font-weight:500}
+.finput{width:100%;border:1px solid #ddd;border-radius:8px;padding:10px 12px;font-size:15px;background:#f8f8f8;color:#1a1a18;font-family:Arial}
+.finput:focus{outline:none;border-color:#1a4fa0;background:#fff}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tgrp{display:flex;gap:6px}
+.tbtn{flex:1;border:1px solid #ddd;border-radius:8px;padding:10px;font-size:13px;cursor:pointer;background:#f8f8f8;color:#666;font-family:Arial;font-weight:500}
+.tbtn.ry{background:#e4f2ea;border-color:#1a6b3a;color:#1a6b3a}
+.tbtn.rn{background:#f5e4e4;border-color:#8b1a1a;color:#8b1a1a}
+.tbtn.sp{background:#e4f2ea;border-color:#1a6b3a;color:#1a6b3a}
+.tbtn.su{background:#fff3e0;border-color:#e67700;color:#e67700}
+.btn-submit{width:100%;background:#1a4fa0;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px;font-family:Arial}
+.btn-submit:active{background:#133a78}
+
+/* Confirm dialog */
+.cov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;align-items:center;justify-content:center;padding:20px}
+.cov.on{display:flex}
+.cbox{background:#fff;border-radius:12px;padding:22px;width:100%;max-width:300px;text-align:center}
+.ctitle2{font-size:15px;font-weight:700;margin-bottom:8px}
+.ctext{font-size:13px;color:#666;margin-bottom:18px;white-space:pre-line}
+.cbtns2{display:flex;gap:8px}
+.cbtn{flex:1;padding:11px;border-radius:8px;font-size:14px;cursor:pointer;font-family:Arial;font-weight:600;border:none}
+.cbtn.cancel{background:#f0f0f0;color:#666}
+.cbtn.ok{background:#8b1a1a;color:#fff}
+
+/* Toast */
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#1a1a18;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+.toast.on{opacity:1}
+.toast.tok{background:#1a6b3a}
+.toast.terr{background:#8b1a1a}
+
+@media(max-width:380px){.frow{grid-template-columns:1fr}.bcv{font-size:15px}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="hrow1">
+    <div class="logo">💰</div>
+    <div>
+      <div class="htitle">הוצאות יובל</div>
+      <div class="hsub">מעקב הוצאות משפחתי <span class="dot" id="dot"></span></div>
+    </div>
+  </div>
+  <div class="bcards">
+    <div class="bc u"><div class="bcv" id="hUnpaid">₪0</div><div class="bcl">לתשלום</div></div>
+    <div class="bc p"><div class="bcv" id="hPaid">₪0</div><div class="bcl">שולם</div></div>
+    <div class="bc"><div class="bcv" id="hTotal">₪0</div><div class="bcl">סה"כ</div></div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="filters">
+    <select class="fsel" id="fltPayer" onchange="applyFilter()">
+      <option value="">כל המשלמים</option>
+    </select>
+    <select class="fsel" id="fltStatus" onchange="applyFilter()">
+      <option value="">כל הסטטוסים</option>
+      <option value="unpaid">לא שולם</option>
+      <option value="paid">שולם</option>
+    </select>
+    <input type="date" class="fdate" id="fltFrom" onchange="applyFilter()" title="מתאריך">
+    <input type="date" class="fdate" id="fltTo" onchange="applyFilter()" title="עד תאריך">
+    <button class="fclear" onclick="clearFilters()">נקה</button>
+  </div>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="bulkbar" id="bulkbar">
+    <div class="bulkinfo" id="bulkinfo"></div>
+    <button class="btn-bp" onclick="bulkPay()">✓ סמן כשולם</button>
+  </div>
+
+  <div class="secrow">
+    <div class="seclbl">הוצאות</div>
+    <div class="cbadge" id="badge">0</div>
+  </div>
+  <div class="elist" id="elist">
+    <div class="empty"><div class="ico">⏳</div><p>טוען נתונים...</p></div>
+  </div>
+</div>
+
+<button class="fab" onclick="openModal()">+</button>
+
+<!-- Add Expense Modal -->
+<div class="moverlay" id="moverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="mtitle">
+      הוספת הוצאה
+      <button class="mclose" onclick="closeModal()">×</button>
+    </div>
+    <div class="fg">
+      <label class="flbl">תאריך</label>
+      <input type="date" class="finput" id="fDate">
+    </div>
+    <div class="frow">
+      <div class="fg">
+        <label class="flbl">משלם</label>
+        <select class="finput" id="fPayer"></select>
+      </div>
+      <div class="fg">
+        <label class="flbl">סכום (₪)</label>
+        <input type="number" class="finput" id="fAmount" placeholder="0" step="0.01" min="0" inputmode="decimal">
+      </div>
+    </div>
+    <div class="fg">
+      <label class="flbl">סיבת ההוצאה</label>
+      <input type="text" class="finput" id="fReason" placeholder="לדוגמה: תרופות, ביגוד...">
+    </div>
+    <div class="frow">
+      <div class="fg">
+        <label class="flbl">קבלה?</label>
+        <div class="tgrp">
+          <button class="tbtn" id="tRY" onclick="tog('receipt','yes')">כן</button>
+          <button class="tbtn" id="tRN" onclick="tog('receipt','no')">לא</button>
+        </div>
+      </div>
+      <div class="fg">
+        <label class="flbl">סטטוס</label>
+        <div class="tgrp">
+          <button class="tbtn" id="tSP" onclick="tog('status','paid')">שולם</button>
+          <button class="tbtn" id="tSU" onclick="tog('status','unpaid')">לא שולם</button>
+        </div>
+      </div>
+    </div>
+    <button class="btn-submit" onclick="addExpense()">הוסף הוצאה ✓</button>
+  </div>
+</div>
+
+<!-- Confirm dialog -->
+<div class="cov" id="cov">
+  <div class="cbox">
+    <div class="ctitle2">אישור מחיקה</div>
+    <div class="ctext" id="ctext"></div>
+    <div class="cbtns2">
+      <button class="cbtn cancel" onclick="closeCon()">ביטול</button>
+      <button class="cbtn ok" onclick="doCon()">מחק</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ================================================================
+// FIREBASE CONFIGURATION
+// 1. Go to https://console.firebase.google.com
+// 2. Create or open a project → Build → Realtime Database → Create database
+// 3. Gear icon → Project Settings → Your apps → Add web app → copy config
+// 4. Paste the values below
+// ================================================================
+const FIREBASE_CONFIG = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL:       "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId:             "YOUR_APP_ID"
+};
+// ================================================================
+// REALTIME DATABASE SECURITY RULES
+// In Firebase Console → Realtime Database → Rules, paste:
+// { "rules": { ".read": true, ".write": true } }
+// This allows anyone with the URL to read/write — suitable for
+// a private family URL shared among known members.
+// ================================================================
+
+// ================================================================
+// FAMILY MEMBERS — edit the names in this list
+// ================================================================
+const PAYERS = ['גבי', 'אשתי', 'יובל'];
+// ================================================================
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const db  = firebase.database();
+const ref = db.ref('expenses');
+
+let all    = [];        // all expenses [{id, date, payer, reason, amount, hasReceipt, isPaid, createdAt}]
+let shown  = [];        // filtered subset
+let sel    = new Set(); // selected expense IDs
+let togs   = { receipt: 'no', status: 'unpaid' };
+let conCb  = null;
+
+// ── Init ─────────────────────────────────────────────
+function init() {
+  document.getElementById('fDate').value = today();
+
+  PAYERS.forEach(p => {
+    document.getElementById('fPayer').innerHTML   += `<option value="${esc(p)}">${esc(p)}</option>`;
+    document.getElementById('fltPayer').innerHTML += `<option value="${esc(p)}">${esc(p)}</option>`;
+  });
+
+  tog('receipt', 'no');
+  tog('status',  'unpaid');
+
+  db.ref('.info/connected').on('value', s => {
+    document.getElementById('dot').className = 'dot' + (s.val() ? '' : ' off');
+  });
+
+  ref.on('value', snap => {
+    const d = snap.val() || {};
+    all = Object.entries(d).map(([id, v]) => ({ id, ...v }));
+    all.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+    applyFilter();
+  });
+}
+
+// ── Filters ──────────────────────────────────────────
+function applyFilter() {
+  const payer  = document.getElementById('fltPayer').value;
+  const status = document.getElementById('fltStatus').value;
+  const from   = document.getElementById('fltFrom').value;
+  const to     = document.getElementById('fltTo').value;
+
+  shown = all.filter(e => {
+    if (payer  && e.payer !== payer)              return false;
+    if (status === 'paid'   && !e.isPaid)          return false;
+    if (status === 'unpaid' &&  e.isPaid)          return false;
+    if (from   && e.date < from)                   return false;
+    if (to     && e.date > to)                     return false;
+    return true;
+  });
+
+  sel.clear();
+  render();
+}
+
+function clearFilters() {
+  ['fltPayer','fltStatus','fltFrom','fltTo'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  applyFilter();
+}
+
+// ── Render ────────────────────────────────────────────
+function render() {
+  renderHeader();
+  renderSummary();
+  renderBulkBar();
+  renderList();
+}
+
+function renderHeader() {
+  const total = all.reduce((s, e) => s + (e.amount || 0), 0);
+  const paid  = all.filter(e => e.isPaid).reduce((s, e) => s + (e.amount || 0), 0);
+  document.getElementById('hTotal').textContent  = fmt(total);
+  document.getElementById('hPaid').textContent   = fmt(paid);
+  document.getElementById('hUnpaid').textContent = fmt(total - paid);
+}
+
+function renderSummary() {
+  const m = {};
+  PAYERS.forEach(p => m[p] = { total: 0, paid: 0 });
+  all.forEach(e => {
+    if (!m[e.payer]) m[e.payer] = { total: 0, paid: 0 };
+    m[e.payer].total += (e.amount || 0);
+    if (e.isPaid) m[e.payer].paid += (e.amount || 0);
+  });
+
+  const rows = Object.entries(m)
+    .filter(([, v]) => v.total > 0)
+    .map(([name, v]) => {
+      const rem = v.total - v.paid;
+      return `<div class="prow">
+        <span class="pname">${esc(name)}</span>
+        <span class="ppaid">שולם ${fmt(v.paid)}</span>
+        <span class="pbal" style="color:${rem > 0 ? '#e67700' : '#1a6b3a'}">${fmt(rem)}</span>
+      </div>`;
+    }).join('');
+
+  document.getElementById('summary').innerHTML = rows
+    ? `<div class="slbl">פירוט לפי משלם</div>${rows}`
+    : `<div style="text-align:center;color:#aaa;padding:8px;font-size:13px">אין נתונים עדיין</div>`;
+}
+
+function renderBulkBar() {
+  const unpaidSel = [...sel].filter(id => {
+    const e = all.find(x => x.id === id);
+    return e && !e.isPaid;
+  });
+  const bar = document.getElementById('bulkbar');
+  if (sel.size && unpaidSel.length) {
+    bar.classList.add('on');
+    document.getElementById('bulkinfo').textContent =
+      `${sel.size} נבחרו · ${unpaidSel.length} ממתינים לתשלום`;
+  } else {
+    bar.classList.remove('on');
+  }
+}
+
+function renderList() {
+  const el = document.getElementById('elist');
+  document.getElementById('badge').textContent = shown.length;
+
+  if (!shown.length) {
+    el.innerHTML = `<div class="empty">
+      <div class="ico">${all.length ? '🔍' : '📭'}</div>
+      <p>${all.length ? 'לא נמצאו הוצאות עם הפילטר הנוכחי' : 'אין הוצאות — לחץ + להוסיף'}</p>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = shown.map(e => `
+    <div class="ecard ${e.isPaid ? 'paid' : 'unpaid'}${sel.has(e.id) ? ' sel' : ''}" data-eid="${e.id}">
+      <div class="ctop">
+        <input type="checkbox" class="cchk" ${sel.has(e.id) ? 'checked' : ''}
+          onchange="selToggle('${e.id}', this.checked)">
+        <div class="cmain">
+          <div class="creason">${esc(e.reason)}</div>
+          <div class="cmeta">
+            <span>📅 ${fmtDate(e.date)}</span>
+            <span>👤 ${esc(e.payer)}</span>
+          </div>
+        </div>
+        <div class="camount ${e.isPaid ? 'paid' : 'unpaid'}">${fmt(e.amount)}</div>
+      </div>
+      <div class="ctags">
+        <span class="tag ${e.isPaid ? 'tp' : 'tu'}">${e.isPaid ? '✓ שולם' : '⏳ לא שולם'}</span>
+        <span class="tag ${e.hasReceipt ? 'tr' : 'tnr'}">${e.hasReceipt ? '🧾 קבלה' : 'ללא קבלה'}</span>
+      </div>
+      <div class="cbtns">
+        ${!e.isPaid
+          ? `<button class="btn-pay"   onclick="setPaid('${e.id}', true)">✓ סמן כשולם</button>`
+          : `<button class="btn-unpay" onclick="setPaid('${e.id}', false)">↩ בטל תשלום</button>`}
+        <button class="btn-del" onclick="delExpense('${e.id}')">🗑</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Actions ───────────────────────────────────────────
+function selToggle(id, checked) {
+  checked ? sel.add(id) : sel.delete(id);
+  const card = document.querySelector(`[data-eid="${id}"]`);
+  if (card) card.classList.toggle('sel', checked);
+  renderBulkBar();
+}
+
+function setPaid(id, isPaid) {
+  ref.child(id).update({ isPaid }).catch(() => toast('שגיאה בעדכון', 'terr'));
+  toast(isPaid ? 'סומן כשולם ✓' : 'בוטל תשלום', 'tok');
+}
+
+function bulkPay() {
+  const ids = [...sel].filter(id => {
+    const e = all.find(x => x.id === id);
+    return e && !e.isPaid;
+  });
+  const upd = {};
+  ids.forEach(id => upd[`${id}/isPaid`] = true);
+  ref.update(upd)
+    .then(() => { sel.clear(); toast(`${ids.length} סומנו כשולמו ✓`, 'tok'); })
+    .catch(() => toast('שגיאה', 'terr'));
+}
+
+function delExpense(id) {
+  const e = all.find(x => x.id === id);
+  if (!e) return;
+  openCon(`למחוק את "${e.reason}"?\nפעולה זו אינה ניתנת לביטול.`, () => {
+    ref.child(id).remove()
+      .then(() => toast('ההוצאה נמחקה', 'tok'))
+      .catch(() => toast('שגיאה במחיקה', 'terr'));
+  });
+}
+
+function addExpense() {
+  const date   = document.getElementById('fDate').value;
+  const payer  = document.getElementById('fPayer').value;
+  const reason = document.getElementById('fReason').value.trim();
+  const amount = parseFloat(document.getElementById('fAmount').value);
+
+  if (!date)               { toast('בחר תאריך', 'terr');       return; }
+  if (!reason)             { toast('הכנס סיבת הוצאה', 'terr'); return; }
+  if (!amount || amount <= 0) { toast('הכנס סכום תקין', 'terr');  return; }
+
+  ref.push({
+    date,
+    payer,
+    reason,
+    amount,
+    hasReceipt: togs.receipt === 'yes',
+    isPaid:     togs.status  === 'paid',
+    createdAt:  Date.now()
+  })
+  .then(() => { toast('ההוצאה נוספה ✓', 'tok'); closeModal(); resetForm(); })
+  .catch(() => toast('שגיאה בשמירה', 'terr'));
+}
+
+// ── Modal ─────────────────────────────────────────────
+function openModal() {
+  document.getElementById('fDate').value = today();
+  document.getElementById('moverlay').classList.add('on');
+  setTimeout(() => document.getElementById('fReason').focus(), 300);
+}
+function closeModal() {
+  document.getElementById('moverlay').classList.remove('on');
+}
+function resetForm() {
+  document.getElementById('fReason').value = '';
+  document.getElementById('fAmount').value = '';
+  tog('receipt', 'no');
+  tog('status',  'unpaid');
+}
+
+// ── Toggles ───────────────────────────────────────────
+function tog(type, val) {
+  togs[type] = val;
+  if (type === 'receipt') {
+    document.getElementById('tRY').className = 'tbtn' + (val === 'yes' ? ' ry' : '');
+    document.getElementById('tRN').className = 'tbtn' + (val === 'no'  ? ' rn' : '');
+  } else {
+    document.getElementById('tSP').className = 'tbtn' + (val === 'paid'   ? ' sp' : '');
+    document.getElementById('tSU').className = 'tbtn' + (val === 'unpaid' ? ' su' : '');
+  }
+}
+
+// ── Confirm dialog ────────────────────────────────────
+function openCon(text, cb) {
+  document.getElementById('ctext').textContent = text;
+  conCb = cb;
+  document.getElementById('cov').classList.add('on');
+}
+function closeCon() {
+  document.getElementById('cov').classList.remove('on');
+  conCb = null;
+}
+function doCon() { closeCon(); conCb?.(); }
+
+// ── Toast ─────────────────────────────────────────────
+function toast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast on ${type}`;
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('on'), 3000);
+}
+
+// ── Helpers ───────────────────────────────────────────
+function fmt(n) {
+  return '₪' + (+(n || 0)).toLocaleString('he-IL', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+function fmtDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function today() {
+  return new Date().toISOString().split('T')[0];
+}
+function esc(s) {
+  return String(s || '').replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])
+  );
+}
+
+init();
+</script>
+</body>
+</html>
