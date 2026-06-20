@@ -6,6 +6,7 @@
 <title>הוצאות יובל</title>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14px;padding-bottom:90px}
@@ -126,6 +127,21 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
 .toast.tok{background:#1a6b3a}
 .toast.terr{background:#8b1a1a}
 
+/* Import */
+.btn-import{background:none;border:1px solid #ddd;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;color:#666;font-family:Arial;font-weight:600}
+.btn-import:hover{background:#f0f0f0}
+.ipreview{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}
+.ipreview th{background:#f5f4f0;padding:7px 8px;text-align:right;font-weight:600;border-bottom:2px solid #ddd}
+.ipreview td{padding:7px 8px;border-bottom:1px solid #f0f0f0;white-space:nowrap}
+.ipreview tr:last-child td{border-bottom:none}
+.ipaid{color:#1a6b3a;font-weight:600}
+.iunpaid{color:#e67700;font-weight:600}
+.icount{font-size:13px;color:#666;margin-top:10px;text-align:center}
+.btn-doimport{width:100%;background:#1a6b3a;color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;margin-top:10px;font-family:Arial}
+.btn-doimport:disabled{background:#aaa;cursor:not-allowed}
+.ifile{width:100%;border:2px dashed #ddd;border-radius:10px;padding:20px;text-align:center;cursor:pointer;color:#888;font-size:13px;background:#fafafa}
+.ifile:hover{border-color:#1a4fa0;color:#1a4fa0}
+
 @media(max-width:380px){.frow{grid-template-columns:1fr}.bcv{font-size:15px}}
 </style>
 </head>
@@ -170,7 +186,10 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
 
   <div class="secrow">
     <div class="seclbl">הוצאות</div>
-    <div class="cbadge" id="badge">0</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="btn-import" onclick="openImport()">📥 ייבוא מאקסל</button>
+      <div class="cbadge" id="badge">0</div>
+    </div>
   </div>
   <div class="elist" id="elist">
     <div class="empty"><div class="ico">⏳</div><p>טוען נתונים...</p></div>
@@ -221,6 +240,30 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
       </div>
     </div>
     <button class="btn-submit" onclick="addExpense()">הוסף הוצאה ✓</button>
+  </div>
+</div>
+
+<!-- Import Modal -->
+<div class="moverlay" id="importOverlay" onclick="if(event.target===this)closeImport()">
+  <div class="modal">
+    <div class="mtitle">
+      ייבוא מאקסל
+      <button class="mclose" onclick="closeImport()">×</button>
+    </div>
+    <div id="importStep1">
+      <label class="ifile" for="xlsxFile">
+        לחץ לבחירת קובץ Excel או CSV<br>
+        <span style="font-size:11px;color:#aaa;margin-top:4px;display:block">.xlsx / .xls / .csv</span>
+      </label>
+      <input type="file" id="xlsxFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFile(this)">
+    </div>
+    <div id="importStep2" style="display:none">
+      <div class="icount" id="importCount"></div>
+      <div style="overflow-x:auto">
+        <table class="ipreview" id="importTable"></table>
+      </div>
+      <button class="btn-doimport" id="btnDoImport" onclick="doImport()">ייבא הכל ל-Firebase</button>
+    </div>
   </div>
 </div>
 
@@ -531,6 +574,144 @@ function toast(msg, type = '') {
   t.className = `toast on ${type}`;
   clearTimeout(t._t);
   t._t = setTimeout(() => t.classList.remove('on'), 3000);
+}
+
+// ── Import from Excel ────────────────────────────────
+let importRows = [];
+
+function openImport() {
+  importRows = [];
+  document.getElementById('importStep1').style.display = '';
+  document.getElementById('importStep2').style.display = 'none';
+  document.getElementById('xlsxFile').value = '';
+  document.getElementById('importOverlay').classList.add('on');
+}
+function closeImport() {
+  document.getElementById('importOverlay').classList.remove('on');
+}
+
+function handleFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      importRows = rows.map(parseExcelRow).filter(Boolean);
+      showPreview();
+    } catch(err) {
+      toast('שגיאה בקריאת הקובץ', 'terr');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseExcelRow(row) {
+  // Map Hebrew column names to our data model
+  const get = (...keys) => {
+    for (const k of keys) {
+      const found = Object.keys(row).find(rk => rk.trim() === k.trim());
+      if (found !== undefined && row[found] !== '') return row[found];
+    }
+    return '';
+  };
+
+  const rawDate  = get('תאריך');
+  const reason   = String(get('מהות הוצאה', 'מהות', 'סיבה') || '').trim();
+  const payer    = String(get('שולם על ידי', 'משלם') || '').trim();
+  const rawAmt   = get('סכום');
+  const rawRecpt = get('חשבונית', 'קבלה');
+  const rawPaid  = get('הוחזר', 'שולם');
+  const rawPaidDate = get('תאריך החזר', 'תאריך שולם');
+
+  if (!reason && !rawAmt) return null; // skip empty rows
+
+  const date = parseDate(rawDate);
+  const amount = parseAmount(rawAmt);
+  const hasReceipt = parseBool(rawRecpt);
+  const isPaid = parseBool(rawPaid);
+  const paidDate = rawPaidDate ? parseDate(rawPaidDate) : '';
+
+  return { date, payer: payer || 'לא צוין', reason: reason || 'ללא פירוט', amount, hasReceipt, isPaid, paidDate, createdAt: Date.now() };
+}
+
+function parseDate(v) {
+  if (!v) return today();
+  if (v instanceof Date) {
+    const y = v.getFullYear(), m = String(v.getMonth()+1).padStart(2,'0'), d = String(v.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(v).trim();
+  // DD/MM/YYYY or D/M/YYYY
+  const m1 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if (m1) {
+    const [, d, mo, y] = m1;
+    const year = y.length === 2 ? '20' + y : y;
+    return `${year}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+  // YYYY-MM-DD
+  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m2) return s;
+  return today();
+}
+
+function parseAmount(v) {
+  if (typeof v === 'number') return v;
+  return parseFloat(String(v).replace(/[₪,\s]/g, '')) || 0;
+}
+
+function parseBool(v) {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v === 1;
+  const s = String(v).trim().toLowerCase();
+  return s === 'כן' || s === 'yes' || s === '1' || s === 'true';
+}
+
+function showPreview() {
+  document.getElementById('importStep1').style.display = 'none';
+  document.getElementById('importStep2').style.display = '';
+  document.getElementById('importCount').textContent = `נמצאו ${importRows.length} שורות לייבוא`;
+
+  const preview = importRows.slice(0, 5);
+  document.getElementById('importTable').innerHTML = `
+    <thead><tr>
+      <th>תאריך</th><th>מהות</th><th>משלם</th><th>סכום</th><th>חשבונית</th><th>הוחזר</th>
+    </tr></thead>
+    <tbody>
+      ${preview.map(r => `<tr>
+        <td>${fmtDate(r.date)}</td>
+        <td>${esc(r.reason)}</td>
+        <td>${esc(r.payer)}</td>
+        <td>${fmt(r.amount)}</td>
+        <td>${r.hasReceipt ? '✓' : '—'}</td>
+        <td class="${r.isPaid ? 'ipaid' : 'iunpaid'}">${r.isPaid ? 'כן' : 'לא'}</td>
+      </tr>`).join('')}
+    </tbody>
+    ${importRows.length > 5 ? `<tfoot><tr><td colspan="6" style="text-align:center;color:#aaa;padding:6px">...ועוד ${importRows.length - 5} שורות</td></tr></tfoot>` : ''}
+  `;
+}
+
+async function doImport() {
+  if (!importRows.length) return;
+  const btn = document.getElementById('btnDoImport');
+  btn.disabled = true;
+  btn.textContent = 'מייבא...';
+
+  try {
+    // Push in batches to avoid timeout
+    for (const row of importRows) {
+      await ref.push(row);
+    }
+    toast(`יובאו ${importRows.length} הוצאות ✓`, 'tok');
+    closeImport();
+  } catch(err) {
+    toast('שגיאה בייבוא', 'terr');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'ייבא הכל ל-Firebase';
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────
