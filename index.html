@@ -129,6 +129,21 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
 .toast.tok{background:#1a6b3a}
 .toast.terr{background:#8b1a1a}
 
+/* Category row */
+.catrow{display:flex;gap:7px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.catrow::-webkit-scrollbar{display:none}
+.catcard{flex:0 0 auto;border-radius:10px;padding:9px 12px;cursor:pointer;text-align:center;border:2px solid transparent;transition:all .15s;min-width:70px}
+.catcard.active{border-color:currentColor;transform:translateY(-1px)}
+.catcard .cicon{font-size:20px;line-height:1}
+.catcard .cname{font-size:11px;font-weight:600;margin-top:3px}
+.catcard .camt{font-size:12px;font-family:monospace;font-weight:700;margin-top:2px}
+/* Category tag on card */
+.tag-cat{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600}
+/* Category picker in form */
+.catpick{display:flex;gap:6px;flex-wrap:wrap}
+.catpill{border:1px solid #ddd;border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;background:#f8f8f8;color:#666;font-family:Arial;font-weight:500;white-space:nowrap}
+.catpill.sel{border-width:2px;font-weight:700}
+
 /* Summary modal */
 .sumtable{width:100%;border-collapse:collapse;font-size:14px;margin-top:10px}
 .sumtable th{background:#f5f4f0;padding:9px 10px;text-align:right;font-weight:600;border-bottom:2px solid #ddd;font-size:12px}
@@ -194,6 +209,9 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
 
   <div class="summary" id="summary"></div>
 
+  <!-- Category breakdown row -->
+  <div class="catrow" id="catrow"></div>
+
   <div class="bulkbar" id="bulkbar">
     <div class="bulkinfo" id="bulkinfo"></div>
     <button class="btn-bp" onclick="bulkPay()">✓ סמן כשולם</button>
@@ -238,6 +256,10 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
     <div class="fg">
       <label class="flbl">סיבת ההוצאה</label>
       <input type="text" class="finput" id="fReason" placeholder="לדוגמה: תרופות, ביגוד...">
+    </div>
+    <div class="fg">
+      <label class="flbl">קטגוריה</label>
+      <div class="catpick" id="catpick"></div>
     </div>
     <div class="frow">
       <div class="fg">
@@ -338,18 +360,28 @@ const FIREBASE_CONFIG = {
 // FAMILY MEMBERS — edit the names in this list
 // ================================================================
 const PAYERS = ['גבי', 'חגית', 'יובל'];
+
+const CATEGORIES = [
+  { id: 'food',    label: 'מזון ואוכל', icon: '🍔', color: '#e67700', bg: '#fff3e0' },
+  { id: 'taxi',    label: 'מוניות',     icon: '🚕', color: '#1a4fa0', bg: '#e8eef8' },
+  { id: 'medical', label: 'תרופות',     icon: '💊', color: '#1a6b3a', bg: '#e4f2ea' },
+  { id: 'clothes', label: 'ביגוד',      icon: '👕', color: '#7b2d8b', bg: '#f3e8f8' },
+  { id: 'general', label: 'כללי',       icon: '📦', color: '#555',    bg: '#f0f0f0' },
+];
 // ================================================================
 
 firebase.initializeApp(FIREBASE_CONFIG);
 const db  = firebase.database();
 const ref = db.ref('expenses');
 
-let all      = [];
-let shown    = [];
-let sel      = new Set();
-let togs     = { receipt: 'no', status: 'unpaid' };
-let conCb    = null;
+let all       = [];
+let shown     = [];
+let sel       = new Set();
+let togs      = { receipt: 'no', status: 'unpaid' };
+let conCb     = null;
 let editingId = null;
+let selCat    = null; // active category filter
+let selCatForm = null; // selected category in form
 
 // ── Init ─────────────────────────────────────────────
 function init() {
@@ -362,6 +394,12 @@ function init() {
 
   tog('receipt', 'no');
   tog('status',  'unpaid');
+
+  // Category picker in form
+  document.getElementById('catpick').innerHTML = CATEGORIES.map(c =>
+    `<button class="catpill" id="cp_${c.id}" onclick="setFormCat('${c.id}')">${c.icon} ${c.label}</button>`
+  ).join('');
+  setFormCat('general');
 
   db.ref('.info/connected').on('value', s => {
     document.getElementById('dot').className = 'dot' + (s.val() ? '' : ' off');
@@ -387,11 +425,12 @@ function applyFilter() {
   const to     = document.getElementById('fltTo').value;
 
   shown = all.filter(e => {
-    if (payer  && e.payer !== payer)              return false;
-    if (status === 'paid'   && !e.isPaid)          return false;
-    if (status === 'unpaid' &&  e.isPaid)          return false;
-    if (from   && e.date < from)                   return false;
-    if (to     && e.date > to)                     return false;
+    if (payer  && e.payer !== payer)                        return false;
+    if (status === 'paid'   && !e.isPaid)                   return false;
+    if (status === 'unpaid' &&  e.isPaid)                   return false;
+    if (from   && e.date < from)                            return false;
+    if (to     && e.date > to)                              return false;
+    if (selCat && (e.category || 'general') !== selCat)    return false;
     return true;
   });
 
@@ -410,6 +449,7 @@ function clearFilters() {
 function render() {
   renderHeader();
   renderSummary();
+  renderCatRow();
   renderBulkBar();
   renderList();
 }
@@ -445,6 +485,26 @@ function renderSummary() {
   document.getElementById('summary').innerHTML = rows
     ? `<div class="slbl">פירוט לפי משלם</div>${rows}`
     : `<div style="text-align:center;color:#aaa;padding:8px;font-size:13px">אין נתונים עדיין</div>`;
+}
+
+function renderCatRow() {
+  document.getElementById('catrow').innerHTML = CATEGORIES.map(c => {
+    const total = all.filter(e => (e.category || 'general') === c.id)
+                     .reduce((s, e) => s + (e.amount || 0), 0);
+    const active = selCat === c.id;
+    return `<div class="catcard${active ? ' active' : ''}"
+      style="background:${c.bg};color:${c.color}"
+      onclick="filterByCat('${c.id}')">
+      <div class="cicon">${c.icon}</div>
+      <div class="cname">${c.label}</div>
+      <div class="camt">${fmt(total)}</div>
+    </div>`;
+  }).join('');
+}
+
+function filterByCat(id) {
+  selCat = selCat === id ? null : id;
+  applyFilter();
 }
 
 function renderBulkBar() {
@@ -491,6 +551,7 @@ function renderList() {
       <div class="ctags">
         <span class="tag ${e.isPaid ? 'tp' : 'tu'}">${e.isPaid ? '✓ שולם' : '⏳ לא שולם'}</span>
         <span class="tag ${e.hasReceipt ? 'tr' : 'tnr'}">${e.hasReceipt ? '🧾 קבלה' : 'ללא קבלה'}</span>
+        ${(() => { const c = CATEGORIES.find(x => x.id === (e.category||'general')); return c ? `<span class="tag-cat" style="background:${c.bg};color:${c.color}">${c.icon} ${c.label}</span>` : ''; })()}
       </div>
       <div class="cbtns">
         ${!e.isPaid
@@ -551,7 +612,8 @@ function addExpense() {
   const data = {
     date, payer, reason, amount,
     hasReceipt: togs.receipt === 'yes',
-    isPaid:     togs.status  === 'paid'
+    isPaid:     togs.status  === 'paid',
+    category:   selCatForm || 'general'
   };
 
   if (editingId) {
@@ -588,7 +650,27 @@ function editExpense(id) {
   if ([...payerEl.options].some(o => o.value === e.payer)) payerEl.value = e.payer;
   tog('receipt', e.hasReceipt ? 'yes' : 'no');
   tog('status',  e.isPaid     ? 'paid' : 'unpaid');
+  setFormCat(e.category || 'general');
   document.getElementById('moverlay').classList.add('on');
+}
+
+function setFormCat(id) {
+  selCatForm = id;
+  CATEGORIES.forEach(c => {
+    const el = document.getElementById('cp_' + c.id);
+    if (!el) return;
+    if (c.id === id) {
+      el.className = 'catpill sel';
+      el.style.background = c.bg;
+      el.style.borderColor = c.color;
+      el.style.color = c.color;
+    } else {
+      el.className = 'catpill';
+      el.style.background = '';
+      el.style.borderColor = '';
+      el.style.color = '';
+    }
+  });
 }
 function closeModal() {
   document.getElementById('moverlay').classList.remove('on');
@@ -599,6 +681,7 @@ function resetForm() {
   document.getElementById('fAmount').value = '';
   tog('receipt', 'no');
   tog('status',  'unpaid');
+  setFormCat('general');
 }
 
 // ── Toggles ───────────────────────────────────────────
