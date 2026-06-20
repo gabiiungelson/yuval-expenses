@@ -81,6 +81,8 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
 .btn-unpay{background:#f0f0f0;color:#666;border:1px solid #ddd;border-radius:6px;padding:7px 13px;font-size:12px;cursor:pointer;font-family:Arial}
 .btn-del{background:#f5e4e4;color:#8b1a1a;border:1px solid #8b1a1a;border-radius:6px;padding:7px 10px;font-size:12px;cursor:pointer;font-family:Arial}
 .btn-del:active{background:#8b1a1a;color:#fff}
+.btn-edit{background:#f0f0f0;color:#444;border:1px solid #ddd;border-radius:6px;padding:7px 10px;font-size:12px;cursor:pointer;font-family:Arial}
+.btn-edit:active{background:#ddd}
 
 /* Empty / Loading */
 .empty{text-align:center;padding:40px 20px;color:#aaa}
@@ -216,7 +218,7 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
 <div class="moverlay" id="moverlay" onclick="if(event.target===this)closeModal()">
   <div class="modal">
     <div class="mtitle">
-      הוספת הוצאה
+      <span id="mtitle-text">הוספת הוצאה</span>
       <button class="mclose" onclick="closeModal()">×</button>
     </div>
     <div class="fg">
@@ -253,7 +255,7 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
         </div>
       </div>
     </div>
-    <button class="btn-submit" onclick="addExpense()">הוסף הוצאה ✓</button>
+    <button class="btn-submit" onclick="addExpense()"><span id="btn-submit-text">הוסף הוצאה ✓</span></button>
   </div>
 </div>
 
@@ -342,11 +344,12 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const db  = firebase.database();
 const ref = db.ref('expenses');
 
-let all    = [];        // all expenses [{id, date, payer, reason, amount, hasReceipt, isPaid, createdAt}]
-let shown  = [];        // filtered subset
-let sel    = new Set(); // selected expense IDs
-let togs   = { receipt: 'no', status: 'unpaid' };
-let conCb  = null;
+let all      = [];
+let shown    = [];
+let sel      = new Set();
+let togs     = { receipt: 'no', status: 'unpaid' };
+let conCb    = null;
+let editingId = null;
 
 // ── Init ─────────────────────────────────────────────
 function init() {
@@ -367,7 +370,11 @@ function init() {
   ref.on('value', snap => {
     const d = snap.val() || {};
     all = Object.entries(d).map(([id, v]) => ({ id, ...v }));
-    all.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+    all.sort((a, b) => {
+      const da = a.date ? new Date(a.date).getTime() : 0;
+      const db = b.date ? new Date(b.date).getTime() : 0;
+      return db - da || b.createdAt - a.createdAt;
+    });
     applyFilter();
   });
 }
@@ -489,6 +496,7 @@ function renderList() {
         ${!e.isPaid
           ? `<button class="btn-pay"   onclick="setPaid('${e.id}', true)">✓ סמן כשולם</button>`
           : `<button class="btn-unpay" onclick="setPaid('${e.id}', false)">↩ בטל תשלום</button>`}
+        <button class="btn-edit" onclick="editExpense('${e.id}')">✏️</button>
         <button class="btn-del" onclick="delExpense('${e.id}')">🗑</button>
       </div>
     </div>
@@ -540,27 +548,51 @@ function addExpense() {
   if (!reason)             { toast('הכנס סיבת הוצאה', 'terr'); return; }
   if (!amount || amount <= 0) { toast('הכנס סכום תקין', 'terr');  return; }
 
-  ref.push({
-    date,
-    payer,
-    reason,
-    amount,
+  const data = {
+    date, payer, reason, amount,
     hasReceipt: togs.receipt === 'yes',
-    isPaid:     togs.status  === 'paid',
-    createdAt:  Date.now()
-  })
-  .then(() => { toast('ההוצאה נוספה ✓', 'tok'); closeModal(); resetForm(); })
-  .catch(() => toast('שגיאה בשמירה', 'terr'));
+    isPaid:     togs.status  === 'paid'
+  };
+
+  if (editingId) {
+    ref.child(editingId).update(data)
+      .then(() => { toast('ההוצאה עודכנה ✓', 'tok'); closeModal(); })
+      .catch(() => toast('שגיאה בעדכון', 'terr'));
+  } else {
+    ref.push({ ...data, createdAt: Date.now() })
+      .then(() => { toast('ההוצאה נוספה ✓', 'tok'); closeModal(); resetForm(); })
+      .catch(() => toast('שגיאה בשמירה', 'terr'));
+  }
 }
 
 // ── Modal ─────────────────────────────────────────────
 function openModal() {
+  editingId = null;
+  document.getElementById('mtitle-text').textContent = 'הוספת הוצאה';
+  document.getElementById('btn-submit-text').textContent = 'הוסף הוצאה ✓';
   document.getElementById('fDate').value = today();
+  resetForm();
   document.getElementById('moverlay').classList.add('on');
   setTimeout(() => document.getElementById('fReason').focus(), 300);
 }
+function editExpense(id) {
+  const e = all.find(x => x.id === id);
+  if (!e) return;
+  editingId = id;
+  document.getElementById('mtitle-text').textContent = 'עריכת הוצאה';
+  document.getElementById('btn-submit-text').textContent = 'שמור שינויים ✓';
+  document.getElementById('fDate').value   = e.date || today();
+  document.getElementById('fReason').value = e.reason || '';
+  document.getElementById('fAmount').value = e.amount || '';
+  const payerEl = document.getElementById('fPayer');
+  if ([...payerEl.options].some(o => o.value === e.payer)) payerEl.value = e.payer;
+  tog('receipt', e.hasReceipt ? 'yes' : 'no');
+  tog('status',  e.isPaid     ? 'paid' : 'unpaid');
+  document.getElementById('moverlay').classList.add('on');
+}
 function closeModal() {
   document.getElementById('moverlay').classList.remove('on');
+  editingId = null;
 }
 function resetForm() {
   document.getElementById('fReason').value = '';
