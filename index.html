@@ -651,10 +651,15 @@ function closeSummary() {
 
 // ── Delete all data ───────────────────────────────────
 function deleteAllData() {
-  openCon('למחוק את כל ההוצאות?\nפעולה זו אינה ניתנת לביטול.', () => {
-    ref.remove()
-      .then(() => toast('כל הנתונים נמחקו ✓', 'tok'))
-      .catch(() => toast('שגיאה במחיקה', 'terr'));
+  openCon('למחוק את כל ההוצאות?\nפעולה זו אינה ניתנת לביטול.', async () => {
+    try {
+      const upd = {};
+      all.forEach(e => upd[e.id] = null);
+      await ref.update(upd);
+      toast('כל הנתונים נמחקו ✓', 'tok');
+    } catch(err) {
+      toast('שגיאה במחיקה', 'terr');
+    }
   });
 }
 
