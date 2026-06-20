@@ -591,7 +591,7 @@ function closeCon() {
   document.getElementById('cov').classList.remove('on');
   conCb = null;
 }
-function doCon() { closeCon(); conCb?.(); }
+function doCon() { const cb = conCb; closeCon(); cb?.(); }
 
 // ── Toast ─────────────────────────────────────────────
 function toast(msg, type = '') {
