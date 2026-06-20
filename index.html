@@ -127,6 +127,18 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
 .toast.tok{background:#1a6b3a}
 .toast.terr{background:#8b1a1a}
 
+/* Summary modal */
+.sumtable{width:100%;border-collapse:collapse;font-size:14px;margin-top:10px}
+.sumtable th{background:#f5f4f0;padding:9px 10px;text-align:right;font-weight:600;border-bottom:2px solid #ddd;font-size:12px}
+.sumtable td{padding:9px 10px;border-bottom:1px solid #f0f0f0}
+.sumtable tr:last-child td{border-bottom:none;font-weight:700;background:#f5f4f0}
+.sum-paid{color:#1a6b3a;font-weight:600;font-family:monospace}
+.sum-unpaid{color:#e67700;font-weight:600;font-family:monospace}
+.sum-total{font-family:monospace;font-weight:700}
+.btn-sum{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:Arial;font-weight:600}
+.btn-sum:active{background:rgba(255,255,255,.25)}
+.btn-deleteall{width:100%;background:#f5e4e4;color:#8b1a1a;border:1px solid #8b1a1a;border-radius:8px;padding:10px;font-size:13px;cursor:pointer;font-family:Arial;font-weight:600;margin-top:8px}
+
 /* Import */
 .btn-import{background:none;border:1px solid #ddd;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;color:#666;font-family:Arial;font-weight:600}
 .btn-import:hover{background:#f0f0f0}
@@ -153,6 +165,7 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
     <div>
       <div class="htitle">הוצאות יובל</div>
       <div class="hsub">מעקב הוצאות משפחתי <span class="dot" id="dot"></span></div>
+      <button class="btn-sum" onclick="openSummary()">📊 סיכום</button>
     </div>
   </div>
   <div class="bcards">
@@ -256,6 +269,7 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
         <span style="font-size:11px;color:#aaa;margin-top:4px;display:block">.xlsx / .xls / .csv</span>
       </label>
       <input type="file" id="xlsxFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFile(this)">
+      <button class="btn-deleteall" onclick="deleteAllData()">🗑 מחק את כל הנתונים הקיימים לפני ייבוא</button>
     </div>
     <div id="importStep2" style="display:none">
       <div class="icount" id="importCount"></div>
@@ -264,6 +278,17 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
       </div>
       <button class="btn-doimport" id="btnDoImport" onclick="doImport()">ייבא הכל ל-Firebase</button>
     </div>
+  </div>
+</div>
+
+<!-- Summary Modal -->
+<div class="moverlay" id="summaryOverlay" onclick="if(event.target===this)closeSummary()">
+  <div class="modal">
+    <div class="mtitle">
+      📊 סיכום הוצאות
+      <button class="mclose" onclick="closeSummary()">×</button>
+    </div>
+    <div id="summaryContent"></div>
   </div>
 </div>
 
@@ -574,6 +599,62 @@ function toast(msg, type = '') {
   t.className = `toast on ${type}`;
   clearTimeout(t._t);
   t._t = setTimeout(() => t.classList.remove('on'), 3000);
+}
+
+// ── Summary modal ────────────────────────────────────
+function openSummary() {
+  const m = {};
+  PAYERS.forEach(p => m[p] = { paid: 0, unpaid: 0 });
+  all.forEach(e => {
+    if (!m[e.payer]) m[e.payer] = { paid: 0, unpaid: 0 };
+    if (e.isPaid) m[e.payer].paid   += (e.amount || 0);
+    else          m[e.payer].unpaid += (e.amount || 0);
+  });
+
+  const totalPaid   = Object.values(m).reduce((s,v) => s + v.paid,   0);
+  const totalUnpaid = Object.values(m).reduce((s,v) => s + v.unpaid, 0);
+
+  const rows = Object.entries(m)
+    .filter(([, v]) => v.paid + v.unpaid > 0)
+    .map(([name, v]) => `
+      <tr>
+        <td><strong>${esc(name)}</strong></td>
+        <td class="sum-paid">${fmt(v.paid)}</td>
+        <td class="sum-unpaid">${fmt(v.unpaid)}</td>
+        <td class="sum-total">${fmt(v.paid + v.unpaid)}</td>
+      </tr>
+    `).join('');
+
+  document.getElementById('summaryContent').innerHTML = `
+    <table class="sumtable">
+      <thead><tr>
+        <th>שם</th>
+        <th style="color:#1a6b3a">שולם</th>
+        <th style="color:#e67700">לא שולם</th>
+        <th>סה"כ</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr>
+        <td>סה"כ</td>
+        <td class="sum-paid">${fmt(totalPaid)}</td>
+        <td class="sum-unpaid">${fmt(totalUnpaid)}</td>
+        <td class="sum-total">${fmt(totalPaid + totalUnpaid)}</td>
+      </tr></tfoot>
+    </table>
+  `;
+  document.getElementById('summaryOverlay').classList.add('on');
+}
+function closeSummary() {
+  document.getElementById('summaryOverlay').classList.remove('on');
+}
+
+// ── Delete all data ───────────────────────────────────
+function deleteAllData() {
+  openCon('למחוק את כל ההוצאות?\nפעולה זו אינה ניתנת לביטול.', () => {
+    ref.remove()
+      .then(() => toast('כל הנתונים נמחקו ✓', 'tok'))
+      .catch(() => toast('שגיאה במחיקה', 'terr'));
+  });
 }
 
 // ── Import from Excel ────────────────────────────────
