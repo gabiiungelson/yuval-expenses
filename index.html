@@ -598,9 +598,17 @@ function handleFile(input) {
     try {
       const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-      importRows = rows.map(parseExcelRow).filter(Boolean);
-      showPreview();
+      // Get as arrays (header:1) so we work by column position, not name
+      const all = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      if (all.length < 2) { toast('הקובץ ריק', 'terr'); return; }
+
+      // Detect if first row is headers (contains text) and skip it
+      const firstRow = all[0];
+      const hasHeader = firstRow.some(c => typeof c === 'string' && isNaN(c) && c.trim() !== '');
+      const dataRows = hasHeader ? all.slice(1) : all;
+
+      // Show column mapping UI
+      showColMapper(firstRow, dataRows);
     } catch(err) {
       toast('שגיאה בקריאת הקובץ', 'terr');
     }
@@ -608,33 +616,76 @@ function handleFile(input) {
   reader.readAsArrayBuffer(file);
 }
 
-function parseExcelRow(row) {
-  // Map Hebrew column names to our data model
-  const get = (...keys) => {
-    for (const k of keys) {
-      const found = Object.keys(row).find(rk => rk.trim() === k.trim());
-      if (found !== undefined && row[found] !== '') return row[found];
-    }
-    return '';
+let rawDataRows = [];
+let colMap = { date:0, reason:1, payer:2, amount:3, receipt:4, paid:5, paidDate:6 };
+
+function showColMapper(headers, dataRows) {
+  rawDataRows = dataRows;
+  // Build options from header row
+  const opts = headers.map((h,i) => `<option value="${i}">${h || 'עמודה '+(i+1)}</option>`).join('');
+  const fields = [
+    ['date','תאריך',0], ['reason','מהות הוצאה',1], ['payer','שולם על ידי',2],
+    ['amount','סכום',3], ['receipt','חשבונית (כן/לא)',4], ['paid','הוחזר (כן/לא)',5],
+    ['paidDate','תאריך החזר',6]
+  ];
+
+  document.getElementById('importStep1').innerHTML = `
+    <div style="font-size:13px;color:#666;margin-bottom:12px">
+      נמצאו <strong>${dataRows.length}</strong> שורות. בחר איזו עמודה מתאימה לכל שדה:
+    </div>
+    ${fields.map(([key, label, def]) => `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <label style="flex:1;font-size:13px;font-weight:500">${label}</label>
+        <select id="cm_${key}" style="border:1px solid #ddd;border-radius:6px;padding:6px 8px;font-size:12px;background:#f5f4f0;font-family:Arial">
+          <option value="-1">— לא רלוונטי —</option>
+          ${opts}
+        </select>
+      </div>
+    `).join('')}
+    <button onclick="applyColMap()" style="width:100%;background:#1a4fa0;color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;margin-top:6px;font-family:Arial">
+      המשך לתצוגה מקדימה ←
+    </button>
+  `;
+
+  // Set default selections based on position
+  fields.forEach(([key,, def]) => {
+    const el = document.getElementById('cm_'+key);
+    if (el && def < headers.length) el.value = def;
+  });
+}
+
+function applyColMap() {
+  ['date','reason','payer','amount','receipt','paid','paidDate'].forEach(k => {
+    const el = document.getElementById('cm_'+k);
+    colMap[k] = el ? parseInt(el.value) : -1;
+  });
+  importRows = rawDataRows.map(parseRowByPos).filter(Boolean);
+  if (!importRows.length) { toast('לא נמצאו שורות תקינות', 'terr'); return; }
+  showPreview();
+}
+
+function parseRowByPos(row) {
+  const get = i => (i >= 0 && i < row.length) ? row[i] : '';
+  const rawDate  = get(colMap.date);
+  const reason   = String(get(colMap.reason) || '').trim();
+  const payer    = String(get(colMap.payer)  || '').trim();
+  const rawAmt   = get(colMap.amount);
+  const rawRecpt = get(colMap.receipt);
+  const rawPaid  = get(colMap.paid);
+  const rawPaidDate = get(colMap.paidDate);
+
+  if (!reason && !rawAmt) return null;
+
+  return {
+    date:       parseDate(rawDate),
+    reason:     reason || 'ללא פירוט',
+    payer:      payer  || 'לא צוין',
+    amount:     parseAmount(rawAmt),
+    hasReceipt: parseBool(rawRecpt),
+    isPaid:     parseBool(rawPaid),
+    paidDate:   rawPaidDate ? parseDate(rawPaidDate) : '',
+    createdAt:  Date.now()
   };
-
-  const rawDate  = get('תאריך');
-  const reason   = String(get('מהות הוצאה', 'מהות', 'סיבה') || '').trim();
-  const payer    = String(get('שולם על ידי', 'משלם') || '').trim();
-  const rawAmt   = get('סכום');
-  const rawRecpt = get('חשבונית', 'קבלה');
-  const rawPaid  = get('הוחזר', 'שולם');
-  const rawPaidDate = get('תאריך החזר', 'תאריך שולם');
-
-  if (!reason && !rawAmt) return null; // skip empty rows
-
-  const date = parseDate(rawDate);
-  const amount = parseAmount(rawAmt);
-  const hasReceipt = parseBool(rawRecpt);
-  const isPaid = parseBool(rawPaid);
-  const paidDate = rawPaidDate ? parseDate(rawPaidDate) : '';
-
-  return { date, payer: payer || 'לא צוין', reason: reason || 'ללא פירוט', amount, hasReceipt, isPaid, paidDate, createdAt: Date.now() };
 }
 
 function parseDate(v) {
