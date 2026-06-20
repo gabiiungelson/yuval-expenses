@@ -650,18 +650,17 @@ function closeSummary() {
 }
 
 // ── Delete all data ───────────────────────────────────
-function deleteAllData() {
-  openCon('למחוק את כל ההוצאות?\nפעולה זו אינה ניתנת לביטול.', async () => {
-    try {
-      const upd = {};
-      all.forEach(e => upd[e.id] = null);
-      if (!Object.keys(upd).length) { toast('אין נתונים למחיקה', 'terr'); return; }
-      await ref.update(upd);
-      toast('כל הנתונים נמחקו ✓', 'tok');
-    } catch(err) {
-      toast('שגיאה: ' + (err.message || err.code), 'terr');
-    }
-  });
+async function deleteAllData() {
+  if (!confirm('למחוק את כל ההוצאות? פעולה זו אינה ניתנת לביטול.')) return;
+  try {
+    if (!all.length) { alert('אין נתונים למחיקה'); return; }
+    const upd = {};
+    all.forEach(e => upd[e.id] = null);
+    await ref.update(upd);
+    alert('כל הנתונים נמחקו ✓');
+  } catch(err) {
+    alert('שגיאה: ' + (err.message || err.code));
+  }
 }
 
 // ── Import from Excel ────────────────────────────────
