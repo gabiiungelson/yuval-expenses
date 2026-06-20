@@ -655,10 +655,11 @@ function deleteAllData() {
     try {
       const upd = {};
       all.forEach(e => upd[e.id] = null);
+      if (!Object.keys(upd).length) { toast('אין נתונים למחיקה', 'terr'); return; }
       await ref.update(upd);
       toast('כל הנתונים נמחקו ✓', 'tok');
     } catch(err) {
-      toast('שגיאה במחיקה', 'terr');
+      toast('שגיאה: ' + (err.message || err.code), 'terr');
     }
   });
 }
