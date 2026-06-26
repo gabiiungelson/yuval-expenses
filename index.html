@@ -182,7 +182,10 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
     <div>
       <div class="htitle">הוצאות יובל</div>
       <div class="hsub">מעקב הוצאות משפחתי <span class="dot" id="dot"></span></div>
-      <button class="btn-sum" onclick="openSummary()">📊 סיכום</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn-sum" onclick="openSummary()">📊 סיכום</button>
+        <button class="btn-sum" style="background:rgba(26,107,58,.35);border-color:rgba(26,107,58,.5)" onclick="exportToExcel()">📤 אקסל</button>
+      </div>
     </div>
   </div>
   <div class="bcards">
@@ -220,9 +223,8 @@ body{font-family:Arial,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14p
   <div class="secrow">
     <div class="seclbl">הוצאות</div>
     <div style="display:flex;align-items:center;gap:8px">
-      <button class="btn-import" onclick="openImport()">📥 ייבוא מאקסל</button>
-      <button class="btn-import" style="color:#1a6b3a;border-color:#1a6b3a" onclick="exportToExcel()">📤 ייצוא לאקסל</button>
-      <button class="btn-import" style="color:#8b1a1a;border-color:#8b1a1a" onclick="deleteAllData()">🗑 מחק הכל</button>
+      <button class="btn-import" onclick="openImport()">📥 ייבוא</button>
+      <button class="btn-import" style="color:#8b1a1a;border-color:#8b1a1a" onclick="deleteAllData()">🗑 מחק</button>
       <div class="cbadge" id="badge">0</div>
     </div>
   </div>
